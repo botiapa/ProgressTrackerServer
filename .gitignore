@@ -1,7 +1,8 @@
-#
+# CUSTOM ADDED
 uploads/*
 !uploads/defaultAvatar.png
 auth.key
+.env
 
 # Logs
 logs

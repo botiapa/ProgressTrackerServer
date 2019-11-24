@@ -1,4 +1,4 @@
-const listenPort = 8000;
+const listenPort = 80;
 
 const express = require('express');
 const bodyParser = require('body-parser');

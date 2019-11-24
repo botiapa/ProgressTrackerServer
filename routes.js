@@ -5,7 +5,12 @@ const fs = require('fs');
 
 
 module.exports = function(app, ws, db) {
-    app.get("/message", (req, res) => {
+    app.get("/", (req, res) => 
+	{
+		res.send("Server status: <h2 style=\"color:green;\">ONLINE</h2>")
+	});
+	
+	app.get("/message", (req, res) => {
         db.query('SELECT * from messages', function (error, msgResults, fields) {
             if(error == null) 
 			{
