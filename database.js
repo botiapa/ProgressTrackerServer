@@ -10,13 +10,6 @@ module.exports = function() {
 	var UID;
 	var PASSWORD;
 	var DBPORT;
-	
-	split = fs.readFileSync(filePath, {encoding: "utf8"}).split(";");
-		SERVERa = split[0];
-		DATABASEa = split[1];
-		UIDa = split[2];
-		PASSWORDa = split[3];
-		DBPORTa = split[4];
 
 	if(process.env.USE_ENV == null || process.env.USE_ENV == false) 
 	{
