@@ -1,3 +1,8 @@
+#
+uploads/*
+!uploads/defaultAvatar.png
+auth.key
+
 # Logs
 logs
 *.log
