@@ -1,50 +1,55 @@
-const webSocket = require("nodejs-websocket");
+const { Server } = require('ws');
 const authenticated = [];
 module.exports = {
     ws : null,
-    init : function(db){
-        this.ws = webSocket.createServer(function(conn) {
+    init : function(app, db){
+        this.ws = new Server({server: app}, function(ws)
+		{
+			console.log("WebSocket server started on ");
+		});
+		this.ws.on('connection', (socket, req) => 
+		{
 			console.log("New WS connection");
-            var hash = conn.path.slice(1);
-            if(hash.length == 1) {
-                conn.close();
+            var hash = req.url.slice(1);
+			
+            if(hash.length <= 1) {
+                socket.close();
             }
             else{
-                checkIfLoggedIn(db, conn, hash, function(author) {
-                    authenticated.push({conn : conn, author : author})
-					conn.on('close', function(code, reason) 
+                checkIfLoggedIn(db, socket, hash, function(author) {
+                    authenticated.push({socket : socket, author : author})
+					socket.on('close', function(code, reason) 
 					{
-						authenticated.splice(authenticated.indexOf({conn : conn, author : author}), 1);
+						authenticated.splice(authenticated.indexOf({socket : socket, author : author}), 1);
 						console.log("WS client disconnected peacefully");
 					});
-					conn.on('error', function(err) 
+					socket.on('error', function(err) 
 					{
-						authenticated.splice(authenticated.indexOf({conn : conn, author : author}), 1);
+						authenticated.splice(authenticated.indexOf({socket : socket, author : author}), 1);
 						console.log("WS client disconnected with error");
 					});
                 });
             }
-        });
-
+		});
+		
 		this.ws.on("error", function(error) 
 		{
 			console.log(error);
 		});
-        this.ws.listen(8001);
     },
     messageUpdate : function(message, type) {
         authenticated.forEach(elem => {
 			if(elem.readyState == elem.OPEN) 
 			{
-				elem.conn.sendText(JSON.stringify({type : type, message : message}));
+				elem.socket.send(JSON.stringify({type : type, message : message}));
 			}
         });
     }
 }
 
-function checkIfLoggedIn(db, wsConn, hash, callback) {
+function checkIfLoggedIn(db, socket, hash, callback) {
     if(!hash) {
-        wsConn.close();
+        socket.close();
         return;
     }
     db.query("SELECT * FROM authors WHERE hash = ?", [hash], function(error, results, fields) {
@@ -53,7 +58,7 @@ function checkIfLoggedIn(db, wsConn, hash, callback) {
             return;
         }
         else {
-            wsConn.close();
+            socket.close();
         }
     });
 }
