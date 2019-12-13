@@ -13,11 +13,11 @@ module.exports = {
             var hash = req.url.slice(1);
 			
             if(hash.length <= 1) {
-                socket.close();
+                socket.close(); // If the request doesn't contain a login hash, then disconnect
             }
             else{
                 checkIfLoggedIn(db, socket, hash, function(author) {
-                    authenticated.push({socket : socket, author : author})
+                    authenticated.push({socket : socket, author : author});
 					socket.on('close', function(code, reason) 
 					{
 						authenticated.splice(authenticated.indexOf({socket : socket, author : author}), 1);
@@ -52,9 +52,9 @@ function checkIfLoggedIn(db, socket, hash, callback) {
         socket.close();
         return;
     }
-    db.query("SELECT * FROM authors WHERE hash = ?", [hash], function(error, results, fields) {
-        if(results.length == 1) {
-            callback(results[0]);
+    db.query("SELECT * FROM authors WHERE \"hash\" = $1", [hash], function(dberr, dbres) {
+        if(!dberr && dbres.rowCount == 1) {
+            callback(dbres.rows[0]);
             return;
         }
         else {

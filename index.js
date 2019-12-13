@@ -1,9 +1,11 @@
+async function init() {
 const listenPort = process.env.PORT || 80;
 
 const express = require('express');
 const bodyParser = require('body-parser');
 
-const dbconn = require('./database')();
+const db = require('./database');
+await db.init();
 const wsHandler = require('./websocket');
 
 const app = express()
@@ -13,10 +15,13 @@ const app = express()
 
 
 
-const routes = require('./routes')(app, wsHandler, dbconn);
+const routes = require('./routes')(app, wsHandler, db);
 
 const startedApp = app.listen(listenPort, () => {  
 	console.log('We are live on ' + listenPort);
 });
 
-wsHandler.init(startedApp, dbconn);
+wsHandler.init(startedApp, db);
+};
+
+init();

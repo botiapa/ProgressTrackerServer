@@ -4,17 +4,17 @@ const upload = multer({ dest: 'uploads/', fileFilter: FileFilter})
 const fs = require('fs');
 
 
-module.exports = function(app, ws, db) {
+module.exports = async function(app, ws, db) {
     app.get("/", (req, res) => 
 	{
 		res.send("Server status: <h2 style=\"color:green;\">ONLINE</h2>")
 	});
 	
 	app.get("/message", (req, res) => {
-        db.query('SELECT * from messages', function (error, msgResults, fields) {
-            if(error == null) 
+        db.query('SELECT * from messages', function (dberr, dbres) {
+            if(!dberr) 
 			{
-				gatherAllMessagesWithAuthor(db, msgResults, [], function(error, results) 
+				gatherAllMessagesWithAuthor(db, dbres, [], function(error, results) 
 				{
 					if(error == null) 
 					{
@@ -36,16 +36,22 @@ module.exports = function(app, ws, db) {
             var contents = req.body.Contents || "";
             var progress = req.body.Progress || 0;
             var ID = crypto.randomBytes(18).toString('base64');
-            db.query("INSERT INTO messages(ID, Title, Contents, Progress, Author) VALUES(?,?,?,?,?)", [ID, req.body.Title, contents, progress, author.ID], function(error, results, fields) {
-                if(error == null) {
+            db.query("INSERT INTO messages(\"ID\", \"Title\", \"Contents\", \"Progress\", \"Author\") VALUES($1,$2,$3,$4,$5) RETURNING *", [ID, req.body.Title, contents, progress, author.ID], function(dberr, dbres) {
+                if(!dberr) {
                     res.sendStatus(200);
-                    db.query("SELECT * FROM messages WHERE ID = ?", [ID], function(error, results, fields) { // Update the new message on all connected clients
-                        db.query("SELECT ID,Name,ImageUrl FROM authors WHERE ID = ?", [results[0].Author], function(error, authors, fields) 
+					// Update the new message on all connected clients
+					db.query("SELECT \"ID\",\"Name\",\"ImageUrl\" FROM authors WHERE \"ID\" = $1", [dbres.rows[0].Author], function(dberr_auth, dbres_auth) 
+					{
+						if(!dberr_auth) 
 						{
-							let authorObject = {ID : authors[0].ID, Name : authors[0].Name, ImageUrl : authors[0].ImageUrl};
-							ws.messageUpdate({ID : ID, Title : results[0].Title, Contents : results[0].Contents, Progress : results[0].Progress, Author : authorObject, LastModified : results[0].Last_Modified}, "CREATE");
-						})
-                    })
+							let authorObject = {ID : dbres_auth.rows[0].ID, Name : dbres_auth.rows[0].Name, ImageUrl : dbres_auth.rows[0].ImageUrl};
+							ws.messageUpdate({ID : ID, Title : dbres.rows[0].Title, Contents : dbres.rows[0].Contents, Progress : dbres.rows[0].Progress, Author : authorObject, LastModified : dbres.rows[0].Last_Modified}, "CREATE");
+						}
+						else {
+							console.log(error); // If there's an error here, then there's something very wrong happening..
+							res.sendStatus();
+						}
+					})
                 }
                 else {
                     console.log(error);
@@ -60,21 +66,23 @@ module.exports = function(app, ws, db) {
                 req.sendStatus(400);
                 return;
             }
-            db.query("SELECT * FROM messages WHERE ID = ?", [req.body.ID], function(error, results, fields) {
-                if(error == null && results.length == 1 && author.ID == results[0].Author) {
-                    let title = req.body.Title || results[0].Title;
-                    let contents = req.body.Contents || results[0].Contents;
-                    let progress = req.body.Progress || results[0].Progress;
-                    db.query("UPDATE messages SET Title = ?, Contents = ?, Progress = ? WHERE ID = ?", [title, contents, progress, req.body.ID], function(error, __results, fields) { // Update the new message on all connected clients
-						if(error == null) {
+            db.query("SELECT * FROM messages WHERE \"ID\" = $1", [req.body.ID], function(dberr, dbres) {
+                if(!dberr && dbres.rowCount == 1 && author.ID == dbres.rows[0].Author) {
+                    let title = req.body.Title || dbres.rows[0].Title;
+                    let contents = req.body.Contents || dbres.rows[0].Contents;
+                    let progress = req.body.Progress || dbres.rows[0].Progress;
+                    db.query("UPDATE messages SET \"Title\" = $1, \"Contents\" = $2, \"Progress\" = $3 WHERE \"ID\" = $4", [title, contents, progress, req.body.ID], function(dberr, dbres_updated_msg) { // Update the new message on all connected clients
+						if(dberr == null) {
 							res.sendStatus(200);
-							db.query("SELECT * FROM messages WHERE ID = ?", [req.body.ID], function(error, results, fields) {
-								db.query("SELECT ID,Name,ImageUrl FROM authors WHERE ID = ?", [results[0].Author], function(error, authors, fields) 
-								{
-									let authorObject = {ID : authors[0].ID, Name : authors[0].Name, ImageUrl : authors[0].ImageUrl};
-									ws.messageUpdate({ID : results[0].ID, Title : results[0].Title, Contents : results[0].Contents, Progress : results[0].Progress, Author : authorObject, LastModified : results[0].Last_Modified}, "UPDATE");
-								})
-							})
+							let authorObject = {ID : author.ID, Name : author.Name, ImageUrl : author.ImageUrl};
+							ws.messageUpdate({ // Send websocket update about the modified message
+								ID : dbres_updated_msg.rows[0].ID,
+								Title : dbres_updated_msg.rows[0].Title,
+								Contents : dbres_updated_msg.rows[0].Contents,
+								Progress : dbres_updated_msg.rows[0].Progress,
+								Author : authorObject,
+								LastModified : dbres_updated_msg.rows[0].Last_Modified},
+								"UPDATE");
 						}
 						else {
 							console.log(error);
@@ -105,11 +113,11 @@ module.exports = function(app, ws, db) {
                 req.sendStatus(400);
                 return;
             }
-            db.query("SELECT * FROM messages WHERE ID = ?", [req.body.ID], function(error, results, fields) {
-                if(error == null && results.length == 1) {
-                    if(author.ID == results[0].Author) {
-                        db.query("DELETE FROM messages WHERE ID = ?", [req.body.ID])
-                        ws.messageUpdate({ID : results[0].ID}, "DELETE");
+            db.query("SELECT * FROM messages WHERE \"ID\" = $1", [req.body.ID], function(dberr, dbres) {
+                if(!dberr && dbres.rowCount == 1) {
+                    if(author.ID == dbres.rows[0].Author) {
+                        db.query("DELETE FROM messages WHERE \"ID\" = $1", [req.body.ID])
+                        ws.messageUpdate({ID : req.body.ID}, "DELETE");
                         res.sendStatus(200);
                     }
                     else {
@@ -126,21 +134,21 @@ module.exports = function(app, ws, db) {
             })
         });
     });
-    app.post("/account/login", function(req, res) {
+    app.post("/account/login", async function(req, res) {
         if(!req.body.username || !req.body.password)
         {
             res.sendStatus(400);
             return;
         }
         var loginHash = getRandomHash();
-        db.query("SELECT * FROM authors WHERE Name = ?", [req.body.username], function(error, results, fields) {
-            if(error == null) 
+        db.query("SELECT * FROM authors WHERE \"Name\" = $1", [req.body.username], async function(dberr, dbres) {
+            if(!dberr) 
 			{
-				if(results.length == 1) {
-					var hashedPassword = hashPasswordWithSalt(req.body.password, results[0].Salt);
-					db.query("SELECT * FROM authors WHERE Password = ? AND ID = ?", [hashedPassword[1], results[0].ID], function(error, result, fields) {
-						if(results.length == 1) { // GOOD PASSWORD
-							db.query("UPDATE authors SET hash = ? WHERE Password = ? AND ID = ?", [loginHash, hashedPassword[1], results[0].ID]);
+				if(dbres.rowCount == 1) {
+					var hashedPassword = hashPasswordWithSalt(req.body.password, dbres.rows[0].Salt);
+					await db.query("SELECT * FROM authors WHERE \"Password\" = $1 AND \"ID\" = $2", [hashedPassword[1], dbres.rows[0].ID], async function(err, dbres) {
+						if(dbres.rowCount == 1) { // GOOD PASSWORD
+							await db.query("UPDATE authors SET hash = $1 WHERE \"Password\" = $2 AND \"ID\" = $3", [loginHash, hashedPassword[1], dbres.rows[0].ID]);
 							res.send(loginHash);
 						}
 						else { // BAD PASSWORD
@@ -148,7 +156,7 @@ module.exports = function(app, ws, db) {
 						}
 					});
 				}
-				else if(results.length > 1) { // THERE IS MORE THAN ONE USER WITH THE SAME NAME
+				else if(dbres.rowCount > 1) { // THERE IS MORE THAN ONE USER WITH THE SAME NAME
 					res.sendStatus(500);
 				}
 				else { // NAME NOT FOUND
@@ -169,15 +177,20 @@ module.exports = function(app, ws, db) {
             return;
         }
         var username = req.body.username;
-        var hashedPassword = hashPassword(req.body.password);
+        var hashedPair = hashPassword(req.body.password);
+		
+		var hashedPassword = hashedPair[1].replace("0x00", "");
+		var usedSalt = hashedPair[0];
         var imageUrl = req.body.imageurl || "";
 
-        db.query("SELECT * FROM authors WHERE Name=?", username, function(error, results, fields) {
-            if (error) throw error;
-            if(results.length == 0) {
+		console.log("afafaf");
+        db.query("SELECT * FROM authors WHERE \"Name\"=$1", [username], function(dberr, dbres) {
+            if (dberr) throw dberr;
+			
+            if(dbres.rowCount == 0) {
                 var ID = randomValueBase64(18);
-                db.query("INSERT INTO authors(ID, Name, Password, Salt, ImageUrl) VALUES(?,?,?,?,?);", [ID, username, hashedPassword[1], hashedPassword[0], imageUrl], function(error, results, fields) {
-                    if (error) throw error;
+                db.query("INSERT INTO authors(\"ID\", \"Name\", \"Password\", \"Salt\", \"ImageUrl\") VALUES($1,$2,$3,$4,$5);", [ID, username, hashedPassword, usedSalt, imageUrl], function(dberr, dbres) {
+                    if (dberr) throw dberr;
                     res.sendStatus(200);
                     return;
                 });
@@ -213,17 +226,17 @@ module.exports = function(app, ws, db) {
             res.sendStatus(401);
             return;
         }
-        db.query("SELECT * FROM authors WHERE hash = ?", [req.body.hash], function(error, results, fields) {
-            if(error || results === undefined) 
+        db.query("SELECT * FROM authors WHERE hash = $1", [req.body.hash], function(dberr, dbres) {
+            if(dberr || dbres === undefined) 
 			{
 				res.sendStatus(401);
 				return;
 			} 
-			if(results.length == 1) {
-                callback(results[0]);
+			if(dbres.rowCount == 1) {
+                callback(dbres.rows[0]);
                 return;
             }
-            else if(results.length > 1) {
+            else if(dbres.rowCount > 1) {
                 res.sendStatus(500);
             }
             else {
@@ -234,7 +247,7 @@ module.exports = function(app, ws, db) {
 };
 
 function hashPassword(password) {
-    var salt = crypto.randomBytes(255).toString('latin1');
+    var salt = crypto.randomBytes(255).toString('base64');
     var iterations = 100000;
     var hash = crypto.pbkdf2Sync(password, salt, iterations, 64, "sha512").toString('base64');
     return [salt, hash]
@@ -272,17 +285,17 @@ function randomValueBase64(byteSize) {
 
 function gatherAllMessagesWithAuthor(db, messages, sofar, cb) 
 {
-	var msg = messages.shift();
+	var msg = messages.rows.shift();
 	
 	if(!msg)
 		cb(null, sofar);
 	else 
 	{
-		db.query('SELECT ID,Name,ImageUrl FROM authors WHERE ID = ?', [msg.Author], function(error, results, fields) 
+		db.query('SELECT \"ID\",\"Name\",\"ImageUrl\" FROM authors WHERE \"ID\" = $1', [msg.Author], function(dberr, dbres) 
 		{
-			if(error == null) 
+			if(!dberr) 
 			{
-				let authorObject = {ID : results[0].ID, Name : results[0].Name, ImageUrl : results[0].ImageUrl};
+				let authorObject = {ID : dbres.rows[0].ID, Name : dbres.rows[0].Name, ImageUrl : dbres.rows[0].ImageUrl};
 				sofar.push({
 						"ID": msg.ID,
 						"Title": msg.Title,
