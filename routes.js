@@ -71,7 +71,7 @@ module.exports = async function(app, ws, db) {
                     let title = req.body.Title || dbres.rows[0].Title;
                     let contents = req.body.Contents || dbres.rows[0].Contents;
                     let progress = req.body.Progress || dbres.rows[0].Progress;
-                    db.query("UPDATE messages SET \"Title\" = $1, \"Contents\" = $2, \"Progress\" = $3, \"Last_Modified\" = 2000-00-00 00:00:0.0000+00  WHERE \"ID\" = $4", [title, contents, progress, req.body.ID], function(dberr, dbres_updated_msg) { // Update the new message on all connected clients
+                    db.query("UPDATE messages SET \"Title\" = $1, \"Contents\" = $2, \"Progress\" = $3 WHERE \"ID\" = $4", [title, contents, progress, req.body.ID], function(dberr, dbres_updated_msg) { // Update the new message on all connected clients
 						if(dberr == null) {
 							res.sendStatus(200);
 							let authorObject = {ID : author.ID, Name : author.Name, ImageUrl : author.ImageUrl};
