@@ -71,7 +71,7 @@ module.exports = async function(app, ws, db) {
                     let title = req.body.Title || dbres.rows[0].Title;
                     let contents = req.body.Contents || dbres.rows[0].Contents;
                     let progress = req.body.Progress || dbres.rows[0].Progress;
-                    db.query("UPDATE messages SET \"Title\" = $1, \"Contents\" = $2, \"Progress\" = $3 WHERE \"ID\" = $4", [title, contents, progress, req.body.ID], function(dberr, dbres_updated_msg) { // Update the new message on all connected clients
+                    db.query("UPDATE messages SET \"Title\" = $1, \"Contents\" = $2, \"Progress\" = $3, \"Last_Modified\" = 0  WHERE \"ID\" = $4", [title, contents, progress, req.body.ID], function(dberr, dbres_updated_msg) { // Update the new message on all connected clients
 						if(dberr == null) {
 							res.sendStatus(200);
 							let authorObject = {ID : author.ID, Name : author.Name, ImageUrl : author.ImageUrl};
@@ -211,7 +211,7 @@ module.exports = async function(app, ws, db) {
     app.post("/uploads/uploadimage", upload.single('image'), function(req, res) {
         checkIfLoggedIn(req, res, function(author) {
             fs.rename(req.file.path, "uploads/avatar_" + author.ID, function(error) {
-                if(error == null)
+                if(!error)
                     res.sendStatus(200);
                 else {
                     console.log(error);
@@ -226,7 +226,7 @@ module.exports = async function(app, ws, db) {
             res.sendStatus(401);
             return;
         }
-        db.query("SELECT * FROM authors WHERE hash = $1", [req.body.hash], function(dberr, dbres) {
+        db.query("SELECT * FROM authors WHERE \"hash\" = $1", [req.body.hash], function(dberr, dbres) {
             if(dberr || dbres === undefined) 
 			{
 				res.sendStatus(401);
